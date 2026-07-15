@@ -7,7 +7,7 @@ product, and generate a print-ready GST tax invoice PDF in under 30 seconds.
 
 - Next.js 16 (App Router) + TypeScript
 - Tailwind CSS + shadcn/ui (Base UI primitives)
-- Prisma + Postgres (works with Neon, Vercel Postgres, or any Postgres host)
+- Prisma + SQLite (offline-first, single-file local database)
 - pdf-lib for pixel-precise invoice PDFs
 - react-hook-form + zod
 
@@ -26,35 +26,44 @@ product, and generate a print-ready GST tax invoice PDF in under 30 seconds.
 
 ## Getting Started
 
-1. Get a Postgres connection string — the fastest way is a free project at
-   [neon.tech](https://neon.tech), or Vercel's dashboard: **Storage** tab →
-   **Create Database** → **Postgres**.
-2. ```bash
-   npm install
-   cp .env.example .env   # paste your connection string into DATABASE_URL
-   npx prisma migrate dev --name init
-   npm run dev
-   ```
+```bash
+npm install
+cp .env.example .env
+npx prisma migrate dev --name init
+npm run dev
+```
 
-Open [http://localhost:3000](http://localhost:3000). The first company
-profile is created automatically the first time you visit any page.
+Open [http://localhost:3000](http://localhost:3000). No external services or
+accounts needed — the database is a local SQLite file (`dev.db`). The first
+company profile is created automatically the first time you visit any page.
 
-## Deploying to Vercel
+## Deploying (e.g. to Vercel)
 
-1. Import this repo into Vercel.
-2. Add a Postgres database from the **Storage** tab (this sets `DATABASE_URL`
-   automatically), or add `DATABASE_URL` manually under **Settings → Environment
-   Variables** if you're using Neon/another provider directly.
-3. Deploy. The build runs `prisma migrate deploy` automatically before
-   `next build`, so make sure you've run `prisma migrate dev` locally at
-   least once first and committed the generated `prisma/migrations/` folder —
-   otherwise there's nothing for `migrate deploy` to apply.
+This app is set up for local, offline-first use by default. Vercel's
+serverless functions don't have a persistent filesystem, so the local SQLite
+file won't work there as-is. To deploy somewhere like Vercel, switch to a
+network-accessible Postgres database first:
+
+1. `prisma/schema.prisma` — change the datasource `provider` from `"sqlite"`
+   to `"postgresql"`.
+2. `lib/db.ts` — swap the `PrismaBetterSqlite3` adapter for `PrismaPg` (from
+   `@prisma/adapter-pg`; run `npm install @prisma/adapter-pg pg` first).
+3. Point `DATABASE_URL` at a real Postgres database (e.g. a free project at
+   [neon.tech](https://neon.tech), or Vercel's **Storage** tab → **Create
+   Database** → **Postgres**) and run `npx prisma migrate dev --name init`
+   against it to create fresh migration history (delete the old
+   SQLite-flavored migrations first — the SQL dialects aren't compatible).
+4. Add `"prisma migrate deploy && "` in front of the `build` script in
+   `package.json` so pending migrations apply automatically on every deploy.
+
+Ask for help with this switch whenever you're ready to actually deploy —
+it's a quick, mechanical change.
 
 ## Scripts
 
 ```bash
 npm run dev      # start the dev server
-npm run build    # runs pending migrations, then builds for production
+npm run build    # production build
 npm run test     # run unit tests (vitest)
-npx prisma studio  # browse the database
+npx prisma studio  # browse the local database
 ```
