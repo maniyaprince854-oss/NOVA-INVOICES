@@ -1,0 +1,238 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum TaxType {
+  EXCLUSIVE
+  INCLUSIVE
+}
+
+// Per-item tax treatment. EXCLUSIVE/INCLUSIVE affect how the tax amount is
+// derived from the rate; EXEMPT/ZERO_RATED/NIL_RATED/REVERSE_CHARGE all
+// result in zero tax collected on the invoice (for different legal reasons)
+// so they're computed identically but kept distinct for GST reporting.
+enum ItemTaxType {
+  EXCLUSIVE
+  INCLUSIVE
+  EXEMPT
+  ZERO_RATED
+  NIL_RATED
+  REVERSE_CHARGE
+}
+
+// How CGST+SGST vs IGST is chosen for the invoice.
+// AUTO compares Company.state to Invoice.placeOfSupply; the other two
+// options force the split regardless of state.
+enum GstTaxMode {
+  AUTO
+  CGST_SGST
+  IGST
+}
+
+enum CustomerType {
+  RETAIL
+  WHOLESALE
+  DEALER
+  DISTRIBUTOR
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CHEQUE
+  NEFT
+  RTGS
+  IMPS
+  BANK_TRANSFER
+  CREDIT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Company {
+  id                  String   @id @default(cuid())
+  name                String
+  logoUrl             String?
+  gstin               String?
+  pan                 String?
+  addressLine1        String?
+  addressLine2        String?
+  city                String?
+  state               String
+  pincode             String?
+  phone               String?
+  email               String?
+  website             String?
+
+  bankName            String?
+  accountName         String?
+  accountNumber       String?
+  ifsc                String?
+  branch              String?
+
+  invoicePrefix       String   @default("INV")
+  nextInvoiceSeq      Int      @default(1)
+  financialYearStart  Int      @default(4) // month number FY starts (April = 4)
+
+  termsAndConditions  String?
+  signatureUrl        String?
+  defaultTaxType      TaxType  @default(EXCLUSIVE)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  invoices            Invoice[]
+}
+
+model Customer {
+  id              String        @id @default(cuid())
+  name            String
+  companyName     String?
+  mobile          String?
+  altMobile       String?
+  email           String?
+  gstin           String?
+  pan             String?
+  address         String?
+  city            String?
+  state           String
+  pincode         String?
+  customerType    CustomerType  @default(RETAIL)
+  openingBalance  Float         @default(0)
+  notes           String?
+  status          Boolean       @default(true)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  invoices        Invoice[]
+
+  @@index([name])
+  @@index([mobile])
+  @@index([gstin])
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  name            String
+  hsn             String?
+  unit            String   @default("Pcs")
+  purchasePrice   Float    @default(0)
+  sellingPrice    Float    @default(0)
+  gstPercent      Float    @default(18)
+  taxType         ItemTaxType @default(EXCLUSIVE)
+  stock           Float    @default(0)
+  category        String?
+  active          Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  invoiceItems    InvoiceItem[]
+
+  @@index([name])
+  @@index([hsn])
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  invoiceNumber     String        @unique
+  invoiceDate       DateTime      @default(now())
+  dueDate           DateTime?
+
+  companyId         String
+  company           Company       @relation(fields: [companyId], references: [id])
+
+  customerId        String?
+  customer          Customer?     @relation(fields: [customerId], references: [id])
+
+  // Snapshot of customer/billing details at time of invoicing
+  billToName        String
+  billToCompany     String?
+  billToAddress     String?
+  billToCity        String?
+  billToState       String
+  billToPincode     String?
+  billToGstin       String?
+  billToPan         String?
+  billToMobile      String?
+
+  placeOfSupply     String
+  taxMode           GstTaxMode    @default(AUTO)
+  poNumber          String?
+  transportName     String?
+  vehicleNumber     String?
+  lrNumber          String?
+  dispatchFrom      String?
+
+  paymentMode       PaymentMode?
+  notes             String?
+  salesPerson       String?
+
+  status            InvoiceStatus @default(UNPAID)
+
+  subtotal          Float         @default(0)
+  discountTotal     Float         @default(0)
+  freight           Float         @default(0)
+  loadingCharges    Float         @default(0)
+  packingCharges    Float         @default(0)
+  otherCharges      Float         @default(0)
+
+  cgstTotal         Float         @default(0)
+  sgstTotal         Float         @default(0)
+  igstTotal         Float         @default(0)
+
+  roundOff          Float         @default(0)
+  grandTotal        Float         @default(0)
+  amountPaid        Float         @default(0)
+  balance           Float         @default(0)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  items             InvoiceItem[]
+
+  @@index([invoiceNumber])
+  @@index([invoiceDate])
+  @@index([customerId])
+}
+
+model InvoiceItem {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+
+  description     String
+  hsn             String?
+  qty             Float
+  unit            String   @default("Pcs")
+  rate            Float
+  discountPercent Float    @default(0)
+  taxPercent      Float    @default(0)
+  taxType         ItemTaxType @default(EXCLUSIVE)
+  taxAmount       Float    @default(0)
+  amount          Float
+  total           Float
+
+  sortOrder       Int      @default(0)
+
+  @@index([invoiceId])
+}
