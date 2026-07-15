@@ -7,7 +7,7 @@ product, and generate a print-ready GST tax invoice PDF in under 30 seconds.
 
 - Next.js 16 (App Router) + TypeScript
 - Tailwind CSS + shadcn/ui (Base UI primitives)
-- Prisma + SQLite (offline-first, single-file local database)
+- Prisma + Postgres
 - pdf-lib for pixel-precise invoice PDFs
 - react-hook-form + zod
 
@@ -26,44 +26,50 @@ product, and generate a print-ready GST tax invoice PDF in under 30 seconds.
 
 ## Getting Started
 
-```bash
-npm install
-cp .env.example .env
-npx prisma migrate dev --name init
-npm run dev
-```
+1. Get a Postgres connection string. Fastest options:
+   - Free project at [neon.tech](https://neon.tech) (no credit card), or
+   - Vercel dashboard → **Storage** tab → **Create Database** → **Postgres**
+2. ```bash
+   npm install
+   cp .env.example .env   # paste your connection string into DATABASE_URL
+   npx prisma migrate dev --name init
+   npm run dev
+   ```
 
-Open [http://localhost:3000](http://localhost:3000). No external services or
-accounts needed — the database is a local SQLite file (`dev.db`). The first
-company profile is created automatically the first time you visit any page.
+Open [http://localhost:3000](http://localhost:3000). The first company
+profile is created automatically the first time you visit any page.
 
-## Deploying (e.g. to Vercel)
+## Deploying to Vercel
 
-This app is set up for local, offline-first use by default. Vercel's
-serverless functions don't have a persistent filesystem, so the local SQLite
-file won't work there as-is. To deploy somewhere like Vercel, switch to a
-network-accessible Postgres database first:
+1. Import this repo into Vercel.
+2. Set `DATABASE_URL` as an environment variable on the project:
+   - Vercel dashboard → your project → **Settings → Environment Variables**
+     → add `DATABASE_URL` with your connection string, for **all
+     environments** (Production, Preview, Development), **or**
+   - Vercel dashboard → your project → **Storage** tab → **Create Database**
+     → **Postgres**, which sets `DATABASE_URL` automatically.
+3. Make sure `prisma/migrations/` has at least one migration committed
+   (`npx prisma migrate dev --name init` locally against your real database,
+   then commit the generated folder) — the build runs `prisma migrate
+   deploy`, which only applies migrations that already exist in the repo.
+   It doesn't create the schema from nothing.
+4. Redeploy.
 
-1. `prisma/schema.prisma` — change the datasource `provider` from `"sqlite"`
-   to `"postgresql"`.
-2. `lib/db.ts` — swap the `PrismaBetterSqlite3` adapter for `PrismaPg` (from
-   `@prisma/adapter-pg`; run `npm install @prisma/adapter-pg pg` first).
-3. Point `DATABASE_URL` at a real Postgres database (e.g. a free project at
-   [neon.tech](https://neon.tech), or Vercel's **Storage** tab → **Create
-   Database** → **Postgres**) and run `npx prisma migrate dev --name init`
-   against it to create fresh migration history (delete the old
-   SQLite-flavored migrations first — the SQL dialects aren't compatible).
-4. Add `"prisma migrate deploy && "` in front of the `build` script in
-   `package.json` so pending migrations apply automatically on every deploy.
-
-Ask for help with this switch whenever you're ready to actually deploy —
-it's a quick, mechanical change.
+**If the build fails with `Error: The datasource.url property is required
+in your Prisma config file when using prisma migrate deploy`** — that means
+`DATABASE_URL` isn't visible during the build. Check:
+- The env var is actually saved on the Vercel project (not just typed and
+  left unsaved), and its name is exactly `DATABASE_URL`.
+- It's enabled for the **Production** environment if you're deploying to
+  production (Vercel lets you scope env vars per environment).
+- After adding/changing it, you need to **redeploy** — Vercel doesn't
+  retroactively apply env var changes to a build that already ran.
 
 ## Scripts
 
 ```bash
 npm run dev      # start the dev server
-npm run build    # production build
+npm run build    # runs pending migrations, then builds for production
 npm run test     # run unit tests (vitest)
-npx prisma studio  # browse the local database
+npx prisma studio  # browse the database
 ```
