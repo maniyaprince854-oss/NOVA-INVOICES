@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,28 +15,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { UserPlus, Search } from "lucide-react";
+import { listCustomers } from "@/lib/repo/customers";
 
-export default async function CustomersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q } = await searchParams;
-
-  const customers = await prisma.customer.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { companyName: { contains: q } },
-            { mobile: { contains: q } },
-            { gstin: { contains: q } },
-          ],
-        }
-      : undefined,
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+export default function CustomersPage() {
+  const [q, setQ] = useState("");
+  const customers = useLiveQuery(() => listCustomers(q), [q]) ?? [];
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-8 space-y-6">
@@ -54,15 +40,15 @@ export default async function CustomersPage({
         </Button>
       </div>
 
-      <form className="relative w-full sm:max-w-sm">
+      <div className="relative w-full sm:max-w-sm">
         <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          name="q"
-          defaultValue={q}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search by name, mobile, GSTIN..."
           className="pl-8"
         />
-      </form>
+      </div>
 
       <div className="rounded-lg border overflow-hidden">
         <Table>

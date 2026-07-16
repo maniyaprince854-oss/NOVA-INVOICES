@@ -1,13 +1,18 @@
-import { prisma } from "@/lib/db";
-import { CompanyForm } from "@/components/company/company-form";
+"use client";
 
-export default async function CompanyPage() {
-  let company = await prisma.company.findFirst();
-  if (!company) {
-    company = await prisma.company.create({
-      data: { name: "My Company", state: "Gujarat", invoicePrefix: "INV" },
-    });
-  }
+import { useEffect, useState } from "react";
+import { getOrCreateCompany } from "@/lib/repo/company";
+import { CompanyForm } from "@/components/company/company-form";
+import type { Company } from "@/lib/types";
+
+export default function CompanyPage() {
+  const [company, setCompany] = useState<Company | null>(null);
+
+  useEffect(() => {
+    getOrCreateCompany().then(setCompany);
+  }, []);
+
+  if (!company) return null;
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">

@@ -1,11 +1,9 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import type { Company, Customer, Invoice, InvoiceItem } from "@/lib/generated/prisma/client";
+import type { Company, Invoice, InvoiceItemRecord } from "@/lib/types";
 import { amountInWords } from "@/lib/invoice-calc";
 import { resolveSameState } from "@/lib/states";
 
 export type InvoiceForPdf = Invoice & {
-  items: InvoiceItem[];
-  customer: Customer | null;
   company: Company;
   /** Sum of this customer's outstanding balance across all their invoices (including this one). Defaults to this invoice's own balance when not supplied. */
   totalDue?: number;
@@ -445,7 +443,7 @@ function drawTableRow(
   });
 }
 
-function taxLabel(item: InvoiceItem): string {
+function taxLabel(item: InvoiceItemRecord): string {
   switch (item.taxType) {
     case "EXEMPT":
       return "Exempt";

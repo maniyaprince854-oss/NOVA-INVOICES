@@ -1,24 +1,37 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { getCustomer } from "@/lib/repo/customers";
 import { CustomerForm } from "@/components/customers/customer-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export default async function CustomerDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    include: {
-      invoices: { orderBy: { invoiceDate: "desc" }, take: 20 },
-    },
-  });
+export default function CustomerDetailPage() {
+  const { id } = useParams<{ id: string }>();
 
-  if (!customer) notFound();
+  const customer = useLiveQuery(() => getCustomer(id), [id]);
+  const invoices =
+    useLiveQuery(
+      () =>
+        db?.invoices
+          .where("customerId")
+          .equals(id)
+          .reverse()
+          .sortBy("invoiceDate") ?? [],
+      [id]
+    ) ?? [];
+
+  if (customer === undefined) return null;
+  if (!customer) {
+    return (
+      <div className="mx-auto max-w-3xl p-4 sm:p-8">
+        <p className="text-muted-foreground">Customer not found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8 space-y-8">
@@ -34,12 +47,12 @@ export default async function CustomerDetailPage({
           <CardTitle>Recent Invoices</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {customer.invoices.length === 0 && (
+          {invoices.length === 0 && (
             <p className="text-sm text-muted-foreground">
               No invoices yet for this customer.
             </p>
           )}
-          {customer.invoices.map((inv) => (
+          {invoices.slice(0, 20).map((inv) => (
             <Link
               key={inv.id}
               href={`/invoices/${inv.id}`}

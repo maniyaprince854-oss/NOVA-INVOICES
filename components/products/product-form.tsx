@@ -5,7 +5,8 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { productSchema, type ProductInput } from "@/lib/schemas";
-import type { Product } from "@/lib/generated/prisma/client";
+import type { Product } from "@/lib/types";
+import { createProduct, updateProduct } from "@/lib/repo/products";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,21 +53,18 @@ export function ProductForm({ product }: { product?: Product }) {
   const taxType = useWatch({ control, name: "taxType" });
 
   async function onSubmit(values: ProductInput) {
-    const res = await fetch(
-      product ? `/api/products/${product.id}` : "/api/products",
-      {
-        method: product ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+    try {
+      if (product) {
+        await updateProduct(product.id, values);
+        toast.success("Product updated");
+      } else {
+        await createProduct(values);
+        toast.success("Product created");
       }
-    );
-    if (!res.ok) {
+      router.push("/products");
+    } catch {
       toast.error("Failed to save product");
-      return;
     }
-    toast.success(product ? "Product updated" : "Product created");
-    router.push("/products");
-    router.refresh();
   }
 
   return (

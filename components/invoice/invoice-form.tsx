@@ -27,12 +27,8 @@ import {
   todayInputDate,
   type InvoiceFormValues,
 } from "@/lib/invoice-form-types";
-import type {
-  Company,
-  Customer,
-  Invoice,
-  InvoiceItem,
-} from "@/lib/generated/prisma/client";
+import type { Company, Customer, Invoice } from "@/lib/types";
+import { createInvoice, updateInvoice } from "@/lib/invoice-service";
 import { INDIAN_STATES } from "@/lib/states";
 import { Save } from "lucide-react";
 
@@ -53,14 +49,9 @@ const PAYMENT_MODE_ITEMS: Record<string, string> = {
   CREDIT: "Credit",
 };
 
-type InvoiceWithRelations = Invoice & {
-  items: InvoiceItem[];
-  customer: Customer | null;
-};
-
 function toDefaultValues(
   company: Company,
-  invoice?: InvoiceWithRelations
+  invoice?: Invoice
 ): InvoiceFormValues {
   if (!invoice) {
     return {
@@ -128,13 +119,15 @@ function toDefaultValues(
 export function InvoiceForm({
   company,
   invoice,
+  initialCustomer,
 }: {
   company: Company;
-  invoice?: InvoiceWithRelations;
+  invoice?: Invoice;
+  initialCustomer?: Customer | null;
 }) {
   const router = useRouter();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    invoice?.customer ?? null
+    initialCustomer ?? null
   );
 
   const { control, register, handleSubmit, setValue, formState } =
@@ -234,27 +227,21 @@ export function InvoiceForm({
       return;
     }
 
-    const res = await fetch(
-      invoice ? `/api/invoices/${invoice.id}` : "/api/invoices",
-      {
-        method: invoice ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    if (!res.ok) {
-      toast.error("Failed to save invoice");
-      return;
+    try {
+      const saved = invoice
+        ? await updateInvoice(invoice.id, parsed.data)
+        : await createInvoice(parsed.data);
+      toast.success(
+        invoice
+          ? `Invoice ${saved.invoiceNumber} updated`
+          : `Invoice ${saved.invoiceNumber} created`
+      );
+      router.push(`/invoices/${saved.id}`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save invoice"
+      );
     }
-
-    const saved = await res.json();
-    toast.success(
-      invoice
-        ? `Invoice ${saved.invoiceNumber} updated`
-        : `Invoice ${saved.invoiceNumber} created`
-    );
-    router.push(`/invoices/${saved.id}`);
   }
 
   useEffect(() => {

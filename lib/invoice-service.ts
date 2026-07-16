@@ -1,15 +1,22 @@
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { createId } from "@/lib/id";
 import { calcLineItem, calcInvoiceTotals, round2 } from "@/lib/invoice-calc";
-import { nextInvoiceNumber } from "@/lib/invoice-number";
+import { financialYearLabel } from "@/lib/invoice-number";
 import { resolveSameState } from "@/lib/states";
 import type { InvoiceInput } from "@/lib/schemas";
-import type { InvoiceStatus, Prisma } from "@/lib/generated/prisma/client";
+import type { Invoice, InvoiceItemRecord, InvoiceStatus } from "@/lib/types";
 
-async function buildInvoiceData(input: InvoiceInput) {
-  const company = await prisma.company.findFirstOrThrow();
-  const customer = await prisma.customer.findUniqueOrThrow({
-    where: { id: input.customerId },
-  });
+async function buildInvoice(
+  input: InvoiceInput,
+  existing?: Invoice
+): Promise<Omit<Invoice, "id" | "invoiceNumber" | "createdAt">> {
+  if (!db) throw new Error("Database not available");
+
+  const company = await db.companies.toCollection().first();
+  if (!company) throw new Error("Company profile not set up yet");
+
+  const customer = await db.customers.get(input.customerId);
+  if (!customer) throw new Error("Customer not found");
 
   const sameState = resolveSameState(
     input.taxMode,
@@ -43,32 +50,30 @@ async function buildInvoiceData(input: InvoiceInput) {
       input.amountPaid <= 0 ? "UNPAID" : balance <= 0 ? "PAID" : "PARTIAL";
   }
 
-  const itemsCreate: Prisma.InvoiceItemUncheckedCreateWithoutInvoiceInput[] =
-    input.items.map((item, idx) => {
-      const r = lineResults[idx];
-      return {
-        productId: item.productId || null,
-        description: item.description,
-        hsn: item.hsn,
-        qty: item.qty,
-        unit: item.unit,
-        rate: item.rate,
-        discountPercent: r.discountPercent,
-        taxPercent: r.taxPercent,
-        taxType: r.taxType,
-        taxAmount: r.taxAmount,
-        amount: r.amount,
-        total: r.total,
-        sortOrder: idx,
-      };
-    });
+  const items: InvoiceItemRecord[] = input.items.map((item, idx) => {
+    const r = lineResults[idx];
+    return {
+      id: existing?.items[idx]?.id ?? createId(),
+      productId: item.productId || null,
+      description: item.description,
+      hsn: item.hsn || null,
+      qty: item.qty,
+      unit: item.unit,
+      rate: item.rate,
+      discountPercent: r.discountPercent,
+      taxPercent: r.taxPercent,
+      taxType: r.taxType,
+      taxAmount: r.taxAmount,
+      amount: r.amount,
+      total: r.total,
+      sortOrder: idx,
+    };
+  });
 
-  const fields: Omit<
-    Prisma.InvoiceUncheckedCreateInput,
-    "invoiceNumber" | "companyId" | "items"
-  > = {
+  return {
     invoiceDate: input.invoiceDate,
     dueDate: input.dueDate ?? null,
+    companyId: company.id,
     customerId: customer.id,
     billToName: customer.name,
     billToCompany: customer.companyName,
@@ -81,14 +86,14 @@ async function buildInvoiceData(input: InvoiceInput) {
     billToMobile: customer.mobile,
     placeOfSupply: input.placeOfSupply,
     taxMode: input.taxMode,
-    poNumber: input.poNumber,
-    transportName: input.transportName,
-    vehicleNumber: input.vehicleNumber,
-    lrNumber: input.lrNumber,
+    poNumber: input.poNumber ?? null,
+    transportName: input.transportName ?? null,
+    vehicleNumber: input.vehicleNumber ?? null,
+    lrNumber: input.lrNumber ?? null,
     dispatchFrom: input.dispatchFrom || company.name,
-    paymentMode: input.paymentMode,
-    notes: input.notes,
-    salesPerson: input.salesPerson,
+    paymentMode: input.paymentMode ?? null,
+    notes: input.notes ?? null,
+    salesPerson: input.salesPerson ?? null,
     status,
     subtotal: totals.subtotal,
     discountTotal: totals.discountTotal,
@@ -103,45 +108,110 @@ async function buildInvoiceData(input: InvoiceInput) {
     grandTotal: totals.grandTotal,
     amountPaid: input.amountPaid,
     balance,
+    updatedAt: new Date(),
+    items,
   };
-
-  return { company, fields, itemsCreate };
 }
 
-export async function createInvoice(input: InvoiceInput) {
-  const { company, fields, itemsCreate } = await buildInvoiceData(input);
+export async function createInvoice(input: InvoiceInput): Promise<Invoice> {
+  if (!db) throw new Error("Database not available");
 
-  return prisma.$transaction(async (tx) => {
-    const invoiceNumber = await nextInvoiceNumber(
-      tx,
-      company.id,
-      input.invoiceDate
-    );
+  return db.transaction("rw", db.companies, db.customers, db.invoices, async () => {
+    const fields = await buildInvoice(input);
+    const company = await db!.companies.get(fields.companyId);
+    if (!company) throw new Error("Company profile not set up yet");
 
-    return tx.invoice.create({
-      data: {
-        invoiceNumber,
-        companyId: company.id,
-        ...fields,
-        items: { create: itemsCreate },
-      },
-      include: { items: true, customer: true },
-    });
+    const seq = company.nextInvoiceSeq;
+    await db!.companies.update(company.id, { nextInvoiceSeq: seq + 1 });
+    const fy = financialYearLabel(input.invoiceDate, company.financialYearStart);
+    const invoiceNumber = `${company.invoicePrefix}-${fy}-${seq}`;
+
+    const invoice: Invoice = {
+      id: createId(),
+      invoiceNumber,
+      createdAt: new Date(),
+      ...fields,
+    };
+    await db!.invoices.add(invoice);
+    return invoice;
   });
 }
 
-export async function updateInvoice(id: string, input: InvoiceInput) {
-  const { fields, itemsCreate } = await buildInvoiceData(input);
+export async function updateInvoice(
+  id: string,
+  input: InvoiceInput
+): Promise<Invoice> {
+  if (!db) throw new Error("Database not available");
 
-  return prisma.$transaction(async (tx) => {
-    await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
-    return tx.invoice.update({
-      where: { id },
-      data: {
-        ...fields,
-        items: { create: itemsCreate },
-      },
-      include: { items: true, customer: true },
-    });
+  return db.transaction("rw", db.companies, db.customers, db.invoices, async () => {
+    const existing = await db!.invoices.get(id);
+    if (!existing) throw new Error("Invoice not found");
+
+    const fields = await buildInvoice(input, existing);
+    const invoice: Invoice = {
+      ...existing,
+      ...fields,
+    };
+    await db!.invoices.put(invoice);
+    return invoice;
   });
+}
+
+export async function listInvoices(query?: string): Promise<Invoice[]> {
+  if (!db) return [];
+
+  const all = await db.invoices.orderBy("invoiceDate").reverse().toArray();
+  if (!query) return all.slice(0, 100);
+
+  const q = query.trim().toLowerCase();
+  return all
+    .filter((inv) =>
+      [
+        inv.invoiceNumber,
+        inv.billToName,
+        inv.billToGstin,
+        inv.billToMobile,
+        inv.poNumber,
+        inv.vehicleNumber,
+      ]
+        .filter(Boolean)
+        .some((field) => field!.toLowerCase().includes(q))
+    )
+    .slice(0, 100);
+}
+
+export async function getInvoice(id: string): Promise<Invoice | undefined> {
+  if (!db) return undefined;
+  return db.invoices.get(id);
+}
+
+export async function deleteInvoice(id: string): Promise<void> {
+  if (!db) return;
+  await db.invoices.delete(id);
+}
+
+export async function setInvoiceStatus(
+  id: string,
+  status: InvoiceStatus
+): Promise<Invoice> {
+  if (!db) throw new Error("Database not available");
+  const existing = await db.invoices.get(id);
+  if (!existing) throw new Error("Invoice not found");
+  const updated: Invoice = { ...existing, status, updatedAt: new Date() };
+  await db.invoices.put(updated);
+  return updated;
+}
+
+/** Sum of a customer's outstanding balance across all their non-cancelled invoices. */
+export async function getCustomerTotalDue(customerId: string): Promise<number> {
+  if (!db) return 0;
+  const invoices = await db.invoices
+    .where("customerId")
+    .equals(customerId)
+    .toArray();
+  return round2(
+    invoices
+      .filter((inv) => inv.status !== "CANCELLED")
+      .reduce((sum, inv) => sum + inv.balance, 0)
+  );
 }

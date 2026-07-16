@@ -1,15 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilePlus2, Users, Package } from "lucide-react";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 
-export default async function Home() {
-  const [invoiceCount, customerCount, productCount] = await Promise.all([
-    prisma.invoice.count(),
-    prisma.customer.count(),
-    prisma.product.count(),
-  ]);
+export default function Home() {
+  const invoiceCount = useLiveQuery(() => db?.invoices.count() ?? 0, []) ?? 0;
+  const customerCount = useLiveQuery(() => db?.customers.count() ?? 0, []) ?? 0;
+  const productCount = useLiveQuery(() => db?.products.count() ?? 0, []) ?? 0;
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-8 space-y-6 sm:space-y-8">

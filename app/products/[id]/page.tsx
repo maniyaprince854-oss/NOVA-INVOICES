@@ -1,15 +1,22 @@
-import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getProduct } from "@/lib/repo/products";
 import { ProductForm } from "@/components/products/product-form";
 
-export default async function ProductDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) notFound();
+export default function ProductDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const product = useLiveQuery(() => getProduct(id), [id]);
+
+  if (product === undefined) return null;
+  if (!product) {
+    return (
+      <div className="mx-auto max-w-3xl p-4 sm:p-8">
+        <p className="text-muted-foreground">Product not found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">

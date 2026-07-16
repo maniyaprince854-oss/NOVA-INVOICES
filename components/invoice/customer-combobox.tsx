@@ -14,7 +14,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { Customer } from "@/lib/generated/prisma/client";
+import type { Customer } from "@/lib/types";
+import { listCustomers } from "@/lib/repo/customers";
 
 export function CustomerCombobox({
   value,
@@ -32,13 +33,9 @@ export function CustomerCombobox({
     if (!open) return;
     setLoading(true);
     const handle = setTimeout(async () => {
-      const res = await fetch(
-        `/api/customers?q=${encodeURIComponent(query)}`
-      );
-      const data = await res.json();
-      setResults(data);
+      setResults(await listCustomers(query));
       setLoading(false);
-    }, 200);
+    }, 150);
     return () => clearTimeout(handle);
   }, [query, open]);
 

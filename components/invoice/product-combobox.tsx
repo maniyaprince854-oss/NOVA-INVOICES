@@ -13,7 +13,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { Product } from "@/lib/generated/prisma/client";
+import type { Product } from "@/lib/types";
+import { listProducts } from "@/lib/repo/products";
 
 export function ProductCombobox({
   onSelect,
@@ -27,9 +28,8 @@ export function ProductCombobox({
   useEffect(() => {
     if (!open) return;
     const handle = setTimeout(async () => {
-      const res = await fetch(`/api/products?q=${encodeURIComponent(query)}`);
-      setResults(await res.json());
-    }, 200);
+      setResults(await listProducts(query));
+    }, 150);
     return () => clearTimeout(handle);
   }, [query, open]);
 

@@ -1,23 +1,30 @@
-import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { getInvoice } from "@/lib/invoice-service";
+import { getCustomer } from "@/lib/repo/customers";
 import { InvoiceForm } from "@/components/invoice/invoice-form";
 
-export default async function EditInvoicePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+export default function EditInvoicePage() {
+  const { id } = useParams<{ id: string }>();
 
-  const [invoice, company] = await Promise.all([
-    prisma.invoice.findUnique({
-      where: { id },
-      include: { items: true, customer: true },
-    }),
-    prisma.company.findFirstOrThrow(),
-  ]);
+  const invoice = useLiveQuery(() => getInvoice(id), [id]);
+  const company = useLiveQuery(() => db?.companies.toCollection().first(), []);
+  const customer = useLiveQuery(
+    () => (invoice?.customerId ? getCustomer(invoice.customerId) : undefined),
+    [invoice?.customerId]
+  );
 
-  if (!invoice) notFound();
+  if (invoice === undefined || company === undefined) return null;
+  if (!invoice || !company) {
+    return (
+      <div className="mx-auto max-w-[1600px] p-4 sm:p-8">
+        <p className="text-muted-foreground">Invoice not found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1600px] p-4 sm:p-8">
@@ -26,7 +33,7 @@ export default async function EditInvoicePage({
           Edit Invoice {invoice.invoiceNumber}
         </h1>
       </div>
-      <InvoiceForm company={company} invoice={invoice} />
+      <InvoiceForm company={company} invoice={invoice} initialCustomer={customer ?? null} />
     </div>
   );
 }

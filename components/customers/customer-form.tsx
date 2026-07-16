@@ -5,7 +5,8 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { customerSchema, type CustomerInput } from "@/lib/schemas";
-import type { Customer } from "@/lib/generated/prisma/client";
+import type { Customer } from "@/lib/types";
+import { createCustomer, updateCustomer } from "@/lib/repo/customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,21 +59,18 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
   const customerType = useWatch({ control, name: "customerType" });
 
   async function onSubmit(values: CustomerInput) {
-    const res = await fetch(
-      customer ? `/api/customers/${customer.id}` : "/api/customers",
-      {
-        method: customer ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+    try {
+      if (customer) {
+        await updateCustomer(customer.id, values);
+        toast.success("Customer updated");
+      } else {
+        await createCustomer(values);
+        toast.success("Customer created");
       }
-    );
-    if (!res.ok) {
+      router.push("/customers");
+    } catch {
       toast.error("Failed to save customer");
-      return;
     }
-    toast.success(customer ? "Customer updated" : "Customer created");
-    router.push("/customers");
-    router.refresh();
   }
 
   return (

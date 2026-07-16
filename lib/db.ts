@@ -1,14 +1,29 @@
-import { PrismaClient } from "@/lib/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import Dexie, { type EntityTable } from "dexie";
+import type { Company, Customer, Product, Invoice } from "@/lib/types";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+class NovaInvoicesDB extends Dexie {
+  companies!: EntityTable<Company, "id">;
+  customers!: EntityTable<Customer, "id">;
+  products!: EntityTable<Product, "id">;
+  invoices!: EntityTable<Invoice, "id">;
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
+  constructor() {
+    super("NovaInvoicesDB");
+    this.version(1).stores({
+      companies: "id",
+      customers: "id, name, mobile, gstin, createdAt",
+      products: "id, name, hsn, createdAt",
+      invoices: "id, invoiceNumber, invoiceDate, customerId, status",
+    });
+  }
+}
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+/**
+ * IndexedDB only exists in the browser. This module is imported by client
+ * components that also run once during Next.js's server-side render pass,
+ * so `db` is null there — every caller must handle that (return an empty
+ * default). On the client the real Dexie instance takes over after the
+ * first render/hydration.
+ */
+export const db: NovaInvoicesDB | null =
+  typeof window !== "undefined" ? new NovaInvoicesDB() : null;

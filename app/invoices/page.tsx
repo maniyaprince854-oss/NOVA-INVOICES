@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { FilePlus2, Search } from "lucide-react";
+import { listInvoices } from "@/lib/invoice-service";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   PAID: "default",
@@ -22,29 +26,9 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   CANCELLED: "destructive",
 };
 
-export default async function InvoicesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q } = await searchParams;
-
-  const invoices = await prisma.invoice.findMany({
-    where: q
-      ? {
-          OR: [
-            { invoiceNumber: { contains: q } },
-            { billToName: { contains: q } },
-            { billToGstin: { contains: q } },
-            { billToMobile: { contains: q } },
-            { poNumber: { contains: q } },
-            { vehicleNumber: { contains: q } },
-          ],
-        }
-      : undefined,
-    orderBy: { invoiceDate: "desc" },
-    take: 100,
-  });
+export default function InvoicesPage() {
+  const [q, setQ] = useState("");
+  const invoices = useLiveQuery(() => listInvoices(q), [q]) ?? [];
 
   return (
     <div className="mx-auto max-w-6xl p-4 sm:p-8 space-y-6">
@@ -65,15 +49,15 @@ export default async function InvoicesPage({
         </Button>
       </div>
 
-      <form className="relative w-full sm:max-w-sm">
+      <div className="relative w-full sm:max-w-sm">
         <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          name="q"
-          defaultValue={q}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search invoice #, customer, GSTIN, vehicle..."
           className="pl-8"
         />
-      </form>
+      </div>
 
       <div className="rounded-lg border overflow-hidden">
         <Table>

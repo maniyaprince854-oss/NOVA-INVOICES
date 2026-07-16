@@ -1,5 +1,9 @@
-import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { getInvoice, getCustomerTotalDue } from "@/lib/invoice-service";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -44,36 +48,31 @@ function money(n: number) {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default async function InvoiceDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const [invoice, company] = await Promise.all([
-    prisma.invoice.findUnique({
-      where: { id },
-      include: { items: true, customer: true },
-    }),
-    prisma.company.findFirst(),
-  ]);
+export default function InvoiceDetailPage() {
+  const { id } = useParams<{ id: string }>();
 
-  if (!invoice) notFound();
+  const invoice = useLiveQuery(() => getInvoice(id), [id]);
+  const company = useLiveQuery(() => db?.companies.toCollection().first(), []);
+  const totalDue =
+    useLiveQuery(
+      () => (invoice?.customerId ? getCustomerTotalDue(invoice.customerId) : invoice?.balance ?? 0),
+      [invoice?.customerId, invoice?.balance]
+    ) ?? invoice?.balance ?? 0;
+
+  if (invoice === undefined) return null;
+  if (!invoice) {
+    return (
+      <div className="mx-auto max-w-4xl p-4 sm:p-8">
+        <p className="text-muted-foreground">Invoice not found.</p>
+      </div>
+    );
+  }
 
   const sameState = resolveSameState(
     invoice.taxMode,
     company?.state ?? invoice.billToState,
     invoice.placeOfSupply
   );
-
-  let totalDue = invoice.balance;
-  if (invoice.customerId) {
-    const agg = await prisma.invoice.aggregate({
-      where: { customerId: invoice.customerId, status: { not: "CANCELLED" } },
-      _sum: { balance: true },
-    });
-    totalDue = agg._sum.balance ?? invoice.balance;
-  }
 
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-8 space-y-6">

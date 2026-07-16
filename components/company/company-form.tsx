@@ -4,7 +4,8 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { companySchema, type CompanyInput } from "@/lib/schemas";
-import type { Company } from "@/lib/generated/prisma/client";
+import type { Company } from "@/lib/types";
+import { updateCompany } from "@/lib/repo/company";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,16 +60,12 @@ export function CompanyForm({ company }: { company: Company }) {
   });
 
   async function onSubmit(values: CompanyInput) {
-    const res = await fetch("/api/company", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    if (!res.ok) {
+    try {
+      await updateCompany(values);
+      toast.success("Company profile saved");
+    } catch {
       toast.error("Failed to save company profile");
-      return;
     }
-    toast.success("Company profile saved");
   }
 
   const { register, handleSubmit, control, setValue, formState } = form;

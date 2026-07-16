@@ -30,7 +30,7 @@ import { ProductCombobox } from "@/components/invoice/product-combobox";
 import { calcLineItem } from "@/lib/invoice-calc";
 import { emptyItem, type InvoiceFormValues } from "@/lib/invoice-form-types";
 import type { ItemTaxTypeValue } from "@/lib/schemas";
-import type { Product } from "@/lib/generated/prisma/client";
+import type { Product } from "@/lib/types";
 
 const TAX_TYPE_OPTIONS: { value: ItemTaxTypeValue; label: string }[] = [
   { value: "EXCLUSIVE", label: "Exclusive" },
